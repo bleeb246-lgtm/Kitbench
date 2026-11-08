@@ -179,7 +179,7 @@ input[type="range"] { width: 100%; accent-color: var(--dykem); }
 
 <div class="app">
   <header class="bar">
-    <div class="brand">Kitbench <small>photo → kitting tray · build 3</small></div>
+    <div class="brand">Kitbench <small>photo → kitting tray · build 4</small></div>
     <div class="tabs" role="tablist" aria-label="View">
       <button role="tab" id="tab-photo" aria-selected="true" data-tab="photo">Photo</button>
       <button role="tab" id="tab-layout" aria-selected="false" data-tab="layout">Layout</button>
@@ -352,17 +352,60 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   // Pocket outline for one tool: traced polygon grown by clearance.
   function signedArea(p) { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[i], r = p[(i + 1) % p.length]; a += q[0] * r[1] - r[0] * q[1]; } return a / 2; }
 
-  // Smoothing is a morphological close (grow by s, shrink by s): it fills notches, stair-steps
-  // and gaps narrower than 2·s and rounds inside corners, but never pulls in past the trace,
-  // so the pocket can only get looser, never tighter.
+  // Resample a closed polygon at a fixed arc-length step.
+  function resample(p, step) {
+    const out = [];
+    let carry = 0;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let t = carry;
+      while (t < L) { out.push([a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L]); t += step; }
+      carry = t - L;
+    }
+    return out.length >= 3 ? out : p;
+  }
+
+  // Gaussian filter along the outline (sigma in mm of arc length).
+  function gaussSmooth(p, sigma, step) {
+    const n = p.length, r = Math.min(Math.floor(n / 2) - 1, Math.ceil(3 * sigma / step));
+    if (r < 1) return p;
+    const w = []; let ws = 0;
+    for (let k = -r; k <= r; k++) { const v = Math.exp(-0.5 * (k * step / sigma) ** 2); w.push(v); ws += v; }
+    const out = new Array(n);
+    for (let i = 0; i < n; i++) {
+      let x = 0, y = 0;
+      for (let k = -r; k <= r; k++) { const q = p[(i + k + n) % n], v = w[k + r]; x += q[0] * v; y += q[1] * v; }
+      out[i] = [x / ws, y / ws];
+    }
+    return out;
+  }
+
+  // Smoothing, in four steps, never cutting into the tool by more than `tol`:
+  //   1. close (grow s, shrink s): fills notches and stair-steps narrower than 2·s;
+  //   2. Gaussian-filter the outline (sigma ≈ 0.6·s): irons out bumps and wobble;
+  //   3. union with the trace inset by tol: anywhere the filter cut deeper than tol, the tool wins;
+  //   4. a small round close to blend those seams.
+  // tol is kept under the clearance, so the tool still drops in.
   function toolSection(M, K, poly, clearance, smooth) {
     const { CrossSection } = M;
-    let cs = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    const base = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    let cs = base;
     if (smooth > 0.05) {
       cs = K(K(cs.offset(smooth, 'Round', 2, 48)).offset(-smooth, 'Round', 2, 48));
-      // A close can pinch a narrow inlet shut and leave an island inside the pocket; drop holes.
-      const outer = cs.toPolygons().filter(p => signedArea(p) > 0);
-      if (outer.length) cs = K(CrossSection.ofPolygons(outer, 'NonZero'));
+      let outer = cs.toPolygons().filter(p => signedArea(p) > 0);   // drop pinched-off islands
+      if (outer.length) {
+        const step = Math.max(0.25, Math.min(1, smooth / 8));
+        const sm = outer.map(p => gaussSmooth(resample(p, step), 0.6 * smooth, step));
+        cs = K(CrossSection.ofPolygons(sm, 'NonZero'));
+        const tol = Math.min(0.6, Math.max(0, clearance) * 0.75);
+        const floorShape = K(base.offset(-tol, 'Round', 2, 48));
+        cs = K(CrossSection.union([cs, floorShape]));
+        const rb = Math.min(2, smooth * 0.3);
+        cs = K(K(cs.offset(rb, 'Round', 2, 48)).offset(-rb, 'Round', 2, 48));
+        outer = cs.toPolygons().filter(p => signedArea(p) > 0);
+        if (outer.length) cs = K(CrossSection.ofPolygons(outer, 'NonZero'));
+      }
     }
     return K(K(cs.offset(clearance, 'Round', 2, 48)).simplify(0.02));
   }
