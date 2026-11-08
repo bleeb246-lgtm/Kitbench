@@ -15,9 +15,20 @@
   }
 
   // Pocket outline for one tool: traced polygon grown by clearance.
-  function toolSection(M, K, poly, clearance) {
+  function signedArea(p) { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[i], r = p[(i + 1) % p.length]; a += q[0] * r[1] - r[0] * q[1]; } return a / 2; }
+
+  // Smoothing is a morphological close (grow by s, shrink by s): it fills notches, stair-steps
+  // and gaps narrower than 2·s and rounds inside corners, but never pulls in past the trace,
+  // so the pocket can only get looser, never tighter.
+  function toolSection(M, K, poly, clearance, smooth) {
     const { CrossSection } = M;
-    const cs = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    let cs = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    if (smooth > 0.05) {
+      cs = K(K(cs.offset(smooth, 'Round', 2, 48)).offset(-smooth, 'Round', 2, 48));
+      // A close can pinch a narrow inlet shut and leave an island inside the pocket; drop holes.
+      const outer = cs.toPolygons().filter(p => signedArea(p) > 0);
+      if (outer.length) cs = K(CrossSection.ofPolygons(outer, 'NonZero'));
+    }
     return K(K(cs.offset(clearance, 'Round', 2, 48)).simplify(0.02));
   }
 
@@ -50,7 +61,7 @@
     const base = chamferBox(M, K, p.W, p.D, H, p.outerChamfer);
     if (!tools.length || depth <= 0.2) return { solid: base, pocketArea: 0 };
 
-    const sections = tools.map(t => toolSection(M, K, t.poly, t.clearance));
+    const sections = tools.map(t => toolSection(M, K, t.poly, t.clearance, t.smooth || 0));
     const pockets = K(CrossSection.union(sections));
     const ext = (cs, h, z) => K(K(cs.extrude(h)).translate([0, 0, z]));
     const fc = Math.min(p.floorChamfer || 0, depth * 0.4);
@@ -98,10 +109,10 @@
   }
 
   // Polygons of one tool's pocket outline (for 2-D drawing and checks).
-  function sectionPolys(M, poly, clearance) {
+  function sectionPolys(M, poly, clearance, smooth) {
     const bin = [];
     const K = o => (bin.push(o), o);
-    try { return toolSection(M, K, poly, clearance).toPolygons(); }
+    try { return toolSection(M, K, poly, clearance, smooth || 0).toPolygons(); }
     finally { bin.forEach(o => o.delete()); }
   }
 

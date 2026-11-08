@@ -14,7 +14,7 @@
     f35: 26, sens: 0.28, minArea: 150,
     tools: [], sel: null, nextId: 1,
     paint: [], pmode: 'corners', brush: 12,
-    tray: { mode: 'hug', W: 200, D: 120, H: 30, floor: 2, wall: 8, web: 3, clearance: 0.6, outerChamfer: 0.8, lipChamfer: 0.8, floorChamfer: 0.4 },
+    tray: { mode: 'hug', W: 200, D: 120, H: 30, floor: 2, wall: 8, web: 3, clearance: 0.6, smooth: 1.5, outerChamfer: 0.8, lipChamfer: 0.8, floorChamfer: 0.4 },
     name: 'kit-tray',
     build: null,
   };
@@ -66,6 +66,7 @@
   }
   function worldPoly(t) { const a = rad(t.rot); return localPoly(t).map(p => { const r = rot(p, a); return [r[0] + t.x, r[1] + t.y]; }); }
   const clr = t => (t.clr != null ? t.clr : S.tray.clearance);
+  const smo = t => (t.sm != null ? t.sm : S.tray.smooth);
   function worldScoops(t) {
     const a = rad(t.rot);
     return t.scoops.map(s => { const r = rot([s.u, s.v], a); return { id: s.id, x: r[0] + t.x, y: r[1] + t.y, angle: s.a + t.rot, length: s.len, radius: s.r }; });
@@ -81,9 +82,9 @@
   const secCache = new Map();
   function toolSection(t) {
     const wp = worldPoly(t);
-    const key = t.id + '|' + clr(t) + '|' + wp.length + '|' + wp[0][0].toFixed(3) + ',' + wp[0][1].toFixed(3) + '|' + wp[1][0].toFixed(3);
+    const key = t.id + '|' + clr(t) + '|' + smo(t) + '|' + wp.length + '|' + wp[0][0].toFixed(3) + ',' + wp[0][1].toFixed(3) + '|' + wp[1][0].toFixed(3);
     if (secCache.has(key)) return secCache.get(key);
-    const polys = M ? G.sectionPolys(M, wp, clr(t)) : [wp];
+    const polys = M ? G.sectionPolys(M, wp, clr(t), smo(t)) : [wp];
     if (secCache.size > 400) secCache.clear();
     secCache.set(key, polys);
     return polys;
@@ -153,7 +154,7 @@
     const old = S.tools;
     S.tools = res.tools.map((r, i) => {
       const prev = old[i];
-      const t = { id: S.nextId++, name: prev ? prev.name : 'Tool ' + (i + 1), raw: r.poly, h: prev ? prev.h : 0, clr: prev ? prev.clr : null, x: 0, y: 0, rot: 0, scoops: [] };
+      const t = { id: S.nextId++, name: prev ? prev.name : 'Tool ' + (i + 1), raw: r.poly, h: prev ? prev.h : 0, clr: prev ? prev.clr : null, sm: prev ? prev.sm : null, x: 0, y: 0, rot: 0, scoops: [] };
       t.rot = -deg(pcaAngle(localPoly(t)));       // long axis horizontal
       return t;
     });
@@ -487,7 +488,18 @@
     $('rotbar').hidden = !t; $('layHint').hidden = !!t;
     $('scoopTip').hidden = !(t && t.scoops.length);
     if (t) { $('rbName').textContent = t.name; $('rbAng').textContent = fmt(normDeg(t.rot), 0) + '°'; }
+    $('smoothPill').hidden = !t;
+    if (t) {
+      if (document.activeElement !== $('tSmooth2')) $('tSmooth2').value = smo(t);
+      $('tSmoothV').textContent = fmt(smo(t), 1) + ' mm' + (t.sm == null ? '' : ' ·');
+    }
   }
+  let smT;
+  $('tSmooth2').addEventListener('input', e => {
+    const t = S.tools.find(t => t.id === S.sel); if (!t) return;
+    t.sm = +e.target.value; drawLayout();
+    clearTimeout(smT); smT = setTimeout(() => { normalize(false); changed(); }, 220);
+  });
   let rotT;
   function rotateBy(t, d) {
     t.rot = normDeg(t.rot + d);
@@ -628,9 +640,9 @@
   // ---------------------------------------------------------------- undo / redo
   const hist = { stack: [], i: -1, quiet: false };
   function snap() {
-    return { tray: { ...S.tray }, sel: S.sel, tools: S.tools.map(t => ({ id: t.id, name: t.name, raw: t.raw, h: t.h, clr: t.clr, x: t.x, y: t.y, rot: t.rot, scoops: t.scoops.map(s => ({ ...s })) })) };
+    return { tray: { ...S.tray }, sel: S.sel, tools: S.tools.map(t => ({ id: t.id, name: t.name, raw: t.raw, h: t.h, clr: t.clr, sm: t.sm, x: t.x, y: t.y, rot: t.rot, scoops: t.scoops.map(s => ({ ...s })) })) };
   }
-  const snapKey = sn => JSON.stringify([sn.tray, sn.tools.map(t => [t.id, t.raw.length, t.h, t.clr, +t.x.toFixed(3), +t.y.toFixed(3), +t.rot.toFixed(3), t.scoops])]);
+  const snapKey = sn => JSON.stringify([sn.tray, sn.tools.map(t => [t.id, t.raw.length, t.h, t.clr, t.sm, +t.x.toFixed(3), +t.y.toFixed(3), +t.rot.toFixed(3), t.scoops])]);
   function commit() {
     if (hist.quiet) return;
     const sn = snap(), k = snapKey(sn);
@@ -687,7 +699,7 @@
     clearTimeout(buildT); buildT = setTimeout(rebuild, 140);
   }
   function geomTools() {
-    return S.tools.map(t => ({ poly: worldPoly(t), clearance: clr(t), scoops: worldScoops(t) }));
+    return S.tools.map(t => ({ poly: worldPoly(t), clearance: clr(t), smooth: smo(t), scoops: worldScoops(t) }));
   }
   function rebuild() {
     if (!M) return;
@@ -777,7 +789,7 @@
     $('traceReadout').innerHTML = S.tools.map(t => { const b = bounds([t.raw]); return `<dt>${esc(t.name)}</dt><dd>${fmt(Math.max(b.w, b.h))} × ${fmt(Math.min(b.w, b.h))}</dd>`; }).join('') || '<dt>No tools found</dt><dd></dd>';
   }
 
-  const trayFields = ['W', 'D', 'H', 'floor', 'wall', 'web', 'clearance', 'outerChamfer', 'lipChamfer', 'floorChamfer'];
+  const trayFields = ['W', 'D', 'H', 'floor', 'wall', 'web', 'clearance', 'smooth', 'outerChamfer', 'lipChamfer', 'floorChamfer'];
   function renderTrayPanel() {
     const T = S.tray, ae = document.activeElement;
     trayFields.forEach(k => { const el = $(k); if (el !== ae) el.value = +fmt(T[k], 2); });
@@ -802,11 +814,12 @@
       <div class="f"><label for="tRot">Rotation <span style="font-family:var(--f-num)">${fmt(((t.rot % 360) + 540) % 360 - 180, 0)}°</span></label>
         <input type="range" id="tRot" min="-180" max="180" step="1" value="${fmt(((t.rot % 360) + 540) % 360 - 180, 0)}"></div>
       <div class="row"><button class="btn small" data-rot="-90">−90°</button><button class="btn small" data-rot="90">+90°</button><button class="btn small" data-rot="180">180°</button><button class="btn small" data-rot="-1">−1°</button><button class="btn small" data-rot="1">+1°</button></div>
-      <div class="grid2">
+      <div class="grid3">
         <div class="f"><label for="tH">Silhouette height</label><div class="unit" data-u="mm"><input type="number" id="tH" step="0.5" min="0" value="${t.h}"></div></div>
+        <div class="f"><label for="tSm">Smoothing</label><div class="unit" data-u="mm"><input type="number" id="tSm" step="0.5" min="0" placeholder="${S.tray.smooth}" value="${t.sm != null ? t.sm : ''}"></div></div>
         <div class="f"><label for="tClr">Clearance</label><div class="unit" data-u="mm"><input type="number" id="tClr" step="0.1" min="0" placeholder="${S.tray.clearance}" value="${t.clr != null ? t.clr : ''}"></div></div>
       </div>
-      <div class="note">Silhouette height is how far above the paper the tool's widest edge sits. It pulls the trace in to cancel camera parallax${S.pose ? ` (camera ${fmt(S.pose.height, 0)} mm up)` : ''}. Blank clearance uses the tray value.</div>
+      <div class="note">Silhouette height is how far above the paper the tool's widest edge sits. It pulls the trace in to cancel camera parallax${S.pose ? ` (camera ${fmt(S.pose.height, 0)} mm up)` : ''}. Blank smoothing or clearance uses the tray value.</div>
       <div class="row" style="justify-content:space-between"><span class="lab" style="font-size:12px;color:var(--muted)">Finger scoops</span><button class="btn small" id="addScoop">Add scoop</button></div>
       ${t.scoops.map(s => `<div class="scoop" data-scoop="${s.id}">
         <div class="f"><label for="sl${s.id}">Length</label><input type="number" id="sl${s.id}" data-k="len" step="1" min="5" value="${fmt(s.len, 0)}"></div>
@@ -868,10 +881,10 @@
   trayFields.forEach(k => $(k).addEventListener('change', e => {
     const v = parseFloat(e.target.value); if (!isFinite(v)) return renderTrayPanel();
     const T = S.tray;
-    const lim = { W: [20, 600], D: [20, 600], H: [3, 200], floor: [0.4, 50], wall: [1, 60], web: [0.8, 30], clearance: [0, 5], outerChamfer: [0, 5], lipChamfer: [0, 5], floorChamfer: [0, 5] }[k];
+    const lim = { W: [20, 600], D: [20, 600], H: [3, 200], floor: [0.4, 50], wall: [1, 60], web: [0.8, 30], clearance: [0, 5], smooth: [0, 15], outerChamfer: [0, 5], lipChamfer: [0, 5], floorChamfer: [0, 5] }[k];
     T[k] = Math.max(lim[0], Math.min(lim[1], v));
     if (T.floor > T.H - 0.6) T.floor = Math.max(0.4, T.H - 0.6);
-    if (k === 'clearance' || k === 'wall' || k === 'web') normalize(false);
+    if (k === 'clearance' || k === 'smooth' || k === 'wall' || k === 'web') normalize(false);
     changed();
   }));
   $('modeHug').addEventListener('click', () => { S.tray.mode = 'hug'; normalize(false); changed(); });
@@ -899,6 +912,7 @@
   panel.addEventListener('change', e => {
     const t = S.tools.find(t => t.id === S.sel); if (!t) return;
     if (e.target.id === 'tH') { t.h = Math.max(0, +e.target.value || 0); normalize(false); changed(); }
+    if (e.target.id === 'tSm') { t.sm = e.target.value === '' ? null : Math.max(0, Math.min(15, +e.target.value)); normalize(false); changed(); }
     if (e.target.id === 'tClr') { t.clr = e.target.value === '' ? null : Math.max(0, +e.target.value); normalize(false); changed(); }
     const sc = e.target.closest('[data-scoop]');
     if (sc) {

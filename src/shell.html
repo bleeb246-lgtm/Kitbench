@@ -206,7 +206,8 @@ input[type="range"] { width: 100%; accent-color: var(--dykem); }
           <button data-rot="90" aria-label="Rotate 90 degrees clockwise"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align:-2px;transform:scaleX(-1)"><path d="M4.5 4.2A5.5 5.5 0 1 1 2.6 9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.8 2.2v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>90</button>
           <button id="rbScoop" class="rb-add" aria-label="Add finger scoop">+ Scoop</button>
         </div>
-        <div class="scooptip" id="scoopTip" hidden>Scoop: drag the dot to move it, a square end to stretch or turn it, the diamond to set its width.</div></div>
+        <div class="photosens smoothpill" id="smoothPill" hidden><label for="tSmooth2">Smooth</label><input type="range" id="tSmooth2" min="0" max="15" step="0.5" value="1.5"><span id="tSmoothV"></span></div>
+        <div class="scooptip" id="scoopTip" hidden style="top:96px">Scoop: drag the dot to move it, a square end to stretch or turn it, the diamond to set its width.</div></div>
       <div class="view" id="v-3d" hidden><div id="three" style="position:absolute;inset:0"></div></div>
       <div class="vtools" role="toolbar" aria-label="Edit">
         <button id="btnUndo" disabled aria-label="Undo" title="Undo (Ctrl+Z)"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 1.8 6.7 5 9.9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.2 6.7h7.3a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Undo</span></button>
@@ -277,9 +278,10 @@ input[type="range"] { width: 100%; accent-color: var(--dykem); }
         </div>
         <div class="sec">
           <h2>Fit &amp; edges</h2>
-          <div class="grid2">
-            <div class="f"><label for="clearance">Clearance per side</label><div class="unit" data-u="mm"><input type="number" id="clearance" step="0.1" min="0"></div></div>
+          <div class="grid3">
+            <div class="f"><label for="clearance">Clearance/side</label><div class="unit" data-u="mm"><input type="number" id="clearance" step="0.1" min="0"></div></div>
             <div class="f"><label for="web">Min web</label><div class="unit" data-u="mm"><input type="number" id="web" step="0.5" min="1"></div></div>
+            <div class="f"><label for="smooth">Smoothing</label><div class="unit" data-u="mm"><input type="number" id="smooth" step="0.5" min="0" max="15"></div></div>
           </div>
           <div class="grid3">
             <div class="f"><label for="outerChamfer">Outer chamfer</label><div class="unit" data-u="mm"><input type="number" id="outerChamfer" step="0.1" min="0"></div></div>

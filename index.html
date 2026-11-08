@@ -219,7 +219,8 @@ input[type="range"] { width: 100%; accent-color: var(--dykem); }
           <button data-rot="90" aria-label="Rotate 90 degrees clockwise"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align:-2px;transform:scaleX(-1)"><path d="M4.5 4.2A5.5 5.5 0 1 1 2.6 9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.8 2.2v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>90</button>
           <button id="rbScoop" class="rb-add" aria-label="Add finger scoop">+ Scoop</button>
         </div>
-        <div class="scooptip" id="scoopTip" hidden>Scoop: drag the dot to move it, a square end to stretch or turn it, the diamond to set its width.</div></div>
+        <div class="photosens smoothpill" id="smoothPill" hidden><label for="tSmooth2">Smooth</label><input type="range" id="tSmooth2" min="0" max="15" step="0.5" value="1.5"><span id="tSmoothV"></span></div>
+        <div class="scooptip" id="scoopTip" hidden style="top:96px">Scoop: drag the dot to move it, a square end to stretch or turn it, the diamond to set its width.</div></div>
       <div class="view" id="v-3d" hidden><div id="three" style="position:absolute;inset:0"></div></div>
       <div class="vtools" role="toolbar" aria-label="Edit">
         <button id="btnUndo" disabled aria-label="Undo" title="Undo (Ctrl+Z)"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 1.8 6.7 5 9.9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.2 6.7h7.3a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Undo</span></button>
@@ -290,9 +291,10 @@ input[type="range"] { width: 100%; accent-color: var(--dykem); }
         </div>
         <div class="sec">
           <h2>Fit &amp; edges</h2>
-          <div class="grid2">
-            <div class="f"><label for="clearance">Clearance per side</label><div class="unit" data-u="mm"><input type="number" id="clearance" step="0.1" min="0"></div></div>
+          <div class="grid3">
+            <div class="f"><label for="clearance">Clearance/side</label><div class="unit" data-u="mm"><input type="number" id="clearance" step="0.1" min="0"></div></div>
             <div class="f"><label for="web">Min web</label><div class="unit" data-u="mm"><input type="number" id="web" step="0.5" min="1"></div></div>
+            <div class="f"><label for="smooth">Smoothing</label><div class="unit" data-u="mm"><input type="number" id="smooth" step="0.5" min="0" max="15"></div></div>
           </div>
           <div class="grid3">
             <div class="f"><label for="outerChamfer">Outer chamfer</label><div class="unit" data-u="mm"><input type="number" id="outerChamfer" step="0.1" min="0"></div></div>
@@ -348,9 +350,20 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   }
 
   // Pocket outline for one tool: traced polygon grown by clearance.
-  function toolSection(M, K, poly, clearance) {
+  function signedArea(p) { let a = 0; for (let i = 0; i < p.length; i++) { const q = p[i], r = p[(i + 1) % p.length]; a += q[0] * r[1] - r[0] * q[1]; } return a / 2; }
+
+  // Smoothing is a morphological close (grow by s, shrink by s): it fills notches, stair-steps
+  // and gaps narrower than 2·s and rounds inside corners, but never pulls in past the trace,
+  // so the pocket can only get looser, never tighter.
+  function toolSection(M, K, poly, clearance, smooth) {
     const { CrossSection } = M;
-    const cs = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    let cs = K(CrossSection.ofPolygons([poly], 'NonZero'));
+    if (smooth > 0.05) {
+      cs = K(K(cs.offset(smooth, 'Round', 2, 48)).offset(-smooth, 'Round', 2, 48));
+      // A close can pinch a narrow inlet shut and leave an island inside the pocket; drop holes.
+      const outer = cs.toPolygons().filter(p => signedArea(p) > 0);
+      if (outer.length) cs = K(CrossSection.ofPolygons(outer, 'NonZero'));
+    }
     return K(K(cs.offset(clearance, 'Round', 2, 48)).simplify(0.02));
   }
 
@@ -383,7 +396,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     const base = chamferBox(M, K, p.W, p.D, H, p.outerChamfer);
     if (!tools.length || depth <= 0.2) return { solid: base, pocketArea: 0 };
 
-    const sections = tools.map(t => toolSection(M, K, t.poly, t.clearance));
+    const sections = tools.map(t => toolSection(M, K, t.poly, t.clearance, t.smooth || 0));
     const pockets = K(CrossSection.union(sections));
     const ext = (cs, h, z) => K(K(cs.extrude(h)).translate([0, 0, z]));
     const fc = Math.min(p.floorChamfer || 0, depth * 0.4);
@@ -431,10 +444,10 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   }
 
   // Polygons of one tool's pocket outline (for 2-D drawing and checks).
-  function sectionPolys(M, poly, clearance) {
+  function sectionPolys(M, poly, clearance, smooth) {
     const bin = [];
     const K = o => (bin.push(o), o);
-    try { return toolSection(M, K, poly, clearance).toPolygons(); }
+    try { return toolSection(M, K, poly, clearance, smooth || 0).toPolygons(); }
     finally { bin.forEach(o => o.delete()); }
   }
 
@@ -1072,7 +1085,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     f35: 26, sens: 0.28, minArea: 150,
     tools: [], sel: null, nextId: 1,
     paint: [], pmode: 'corners', brush: 12,
-    tray: { mode: 'hug', W: 200, D: 120, H: 30, floor: 2, wall: 8, web: 3, clearance: 0.6, outerChamfer: 0.8, lipChamfer: 0.8, floorChamfer: 0.4 },
+    tray: { mode: 'hug', W: 200, D: 120, H: 30, floor: 2, wall: 8, web: 3, clearance: 0.6, smooth: 1.5, outerChamfer: 0.8, lipChamfer: 0.8, floorChamfer: 0.4 },
     name: 'kit-tray',
     build: null,
   };
@@ -1124,6 +1137,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   }
   function worldPoly(t) { const a = rad(t.rot); return localPoly(t).map(p => { const r = rot(p, a); return [r[0] + t.x, r[1] + t.y]; }); }
   const clr = t => (t.clr != null ? t.clr : S.tray.clearance);
+  const smo = t => (t.sm != null ? t.sm : S.tray.smooth);
   function worldScoops(t) {
     const a = rad(t.rot);
     return t.scoops.map(s => { const r = rot([s.u, s.v], a); return { id: s.id, x: r[0] + t.x, y: r[1] + t.y, angle: s.a + t.rot, length: s.len, radius: s.r }; });
@@ -1139,9 +1153,9 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   const secCache = new Map();
   function toolSection(t) {
     const wp = worldPoly(t);
-    const key = t.id + '|' + clr(t) + '|' + wp.length + '|' + wp[0][0].toFixed(3) + ',' + wp[0][1].toFixed(3) + '|' + wp[1][0].toFixed(3);
+    const key = t.id + '|' + clr(t) + '|' + smo(t) + '|' + wp.length + '|' + wp[0][0].toFixed(3) + ',' + wp[0][1].toFixed(3) + '|' + wp[1][0].toFixed(3);
     if (secCache.has(key)) return secCache.get(key);
-    const polys = M ? G.sectionPolys(M, wp, clr(t)) : [wp];
+    const polys = M ? G.sectionPolys(M, wp, clr(t), smo(t)) : [wp];
     if (secCache.size > 400) secCache.clear();
     secCache.set(key, polys);
     return polys;
@@ -1211,7 +1225,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     const old = S.tools;
     S.tools = res.tools.map((r, i) => {
       const prev = old[i];
-      const t = { id: S.nextId++, name: prev ? prev.name : 'Tool ' + (i + 1), raw: r.poly, h: prev ? prev.h : 0, clr: prev ? prev.clr : null, x: 0, y: 0, rot: 0, scoops: [] };
+      const t = { id: S.nextId++, name: prev ? prev.name : 'Tool ' + (i + 1), raw: r.poly, h: prev ? prev.h : 0, clr: prev ? prev.clr : null, sm: prev ? prev.sm : null, x: 0, y: 0, rot: 0, scoops: [] };
       t.rot = -deg(pcaAngle(localPoly(t)));       // long axis horizontal
       return t;
     });
@@ -1545,7 +1559,18 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     $('rotbar').hidden = !t; $('layHint').hidden = !!t;
     $('scoopTip').hidden = !(t && t.scoops.length);
     if (t) { $('rbName').textContent = t.name; $('rbAng').textContent = fmt(normDeg(t.rot), 0) + '°'; }
+    $('smoothPill').hidden = !t;
+    if (t) {
+      if (document.activeElement !== $('tSmooth2')) $('tSmooth2').value = smo(t);
+      $('tSmoothV').textContent = fmt(smo(t), 1) + ' mm' + (t.sm == null ? '' : ' ·');
+    }
   }
+  let smT;
+  $('tSmooth2').addEventListener('input', e => {
+    const t = S.tools.find(t => t.id === S.sel); if (!t) return;
+    t.sm = +e.target.value; drawLayout();
+    clearTimeout(smT); smT = setTimeout(() => { normalize(false); changed(); }, 220);
+  });
   let rotT;
   function rotateBy(t, d) {
     t.rot = normDeg(t.rot + d);
@@ -1686,9 +1711,9 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   // ---------------------------------------------------------------- undo / redo
   const hist = { stack: [], i: -1, quiet: false };
   function snap() {
-    return { tray: { ...S.tray }, sel: S.sel, tools: S.tools.map(t => ({ id: t.id, name: t.name, raw: t.raw, h: t.h, clr: t.clr, x: t.x, y: t.y, rot: t.rot, scoops: t.scoops.map(s => ({ ...s })) })) };
+    return { tray: { ...S.tray }, sel: S.sel, tools: S.tools.map(t => ({ id: t.id, name: t.name, raw: t.raw, h: t.h, clr: t.clr, sm: t.sm, x: t.x, y: t.y, rot: t.rot, scoops: t.scoops.map(s => ({ ...s })) })) };
   }
-  const snapKey = sn => JSON.stringify([sn.tray, sn.tools.map(t => [t.id, t.raw.length, t.h, t.clr, +t.x.toFixed(3), +t.y.toFixed(3), +t.rot.toFixed(3), t.scoops])]);
+  const snapKey = sn => JSON.stringify([sn.tray, sn.tools.map(t => [t.id, t.raw.length, t.h, t.clr, t.sm, +t.x.toFixed(3), +t.y.toFixed(3), +t.rot.toFixed(3), t.scoops])]);
   function commit() {
     if (hist.quiet) return;
     const sn = snap(), k = snapKey(sn);
@@ -1745,7 +1770,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     clearTimeout(buildT); buildT = setTimeout(rebuild, 140);
   }
   function geomTools() {
-    return S.tools.map(t => ({ poly: worldPoly(t), clearance: clr(t), scoops: worldScoops(t) }));
+    return S.tools.map(t => ({ poly: worldPoly(t), clearance: clr(t), smooth: smo(t), scoops: worldScoops(t) }));
   }
   function rebuild() {
     if (!M) return;
@@ -1835,7 +1860,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
     $('traceReadout').innerHTML = S.tools.map(t => { const b = bounds([t.raw]); return `<dt>${esc(t.name)}</dt><dd>${fmt(Math.max(b.w, b.h))} × ${fmt(Math.min(b.w, b.h))}</dd>`; }).join('') || '<dt>No tools found</dt><dd></dd>';
   }
 
-  const trayFields = ['W', 'D', 'H', 'floor', 'wall', 'web', 'clearance', 'outerChamfer', 'lipChamfer', 'floorChamfer'];
+  const trayFields = ['W', 'D', 'H', 'floor', 'wall', 'web', 'clearance', 'smooth', 'outerChamfer', 'lipChamfer', 'floorChamfer'];
   function renderTrayPanel() {
     const T = S.tray, ae = document.activeElement;
     trayFields.forEach(k => { const el = $(k); if (el !== ae) el.value = +fmt(T[k], 2); });
@@ -1860,11 +1885,12 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
       <div class="f"><label for="tRot">Rotation <span style="font-family:var(--f-num)">${fmt(((t.rot % 360) + 540) % 360 - 180, 0)}°</span></label>
         <input type="range" id="tRot" min="-180" max="180" step="1" value="${fmt(((t.rot % 360) + 540) % 360 - 180, 0)}"></div>
       <div class="row"><button class="btn small" data-rot="-90">−90°</button><button class="btn small" data-rot="90">+90°</button><button class="btn small" data-rot="180">180°</button><button class="btn small" data-rot="-1">−1°</button><button class="btn small" data-rot="1">+1°</button></div>
-      <div class="grid2">
+      <div class="grid3">
         <div class="f"><label for="tH">Silhouette height</label><div class="unit" data-u="mm"><input type="number" id="tH" step="0.5" min="0" value="${t.h}"></div></div>
+        <div class="f"><label for="tSm">Smoothing</label><div class="unit" data-u="mm"><input type="number" id="tSm" step="0.5" min="0" placeholder="${S.tray.smooth}" value="${t.sm != null ? t.sm : ''}"></div></div>
         <div class="f"><label for="tClr">Clearance</label><div class="unit" data-u="mm"><input type="number" id="tClr" step="0.1" min="0" placeholder="${S.tray.clearance}" value="${t.clr != null ? t.clr : ''}"></div></div>
       </div>
-      <div class="note">Silhouette height is how far above the paper the tool's widest edge sits. It pulls the trace in to cancel camera parallax${S.pose ? ` (camera ${fmt(S.pose.height, 0)} mm up)` : ''}. Blank clearance uses the tray value.</div>
+      <div class="note">Silhouette height is how far above the paper the tool's widest edge sits. It pulls the trace in to cancel camera parallax${S.pose ? ` (camera ${fmt(S.pose.height, 0)} mm up)` : ''}. Blank smoothing or clearance uses the tray value.</div>
       <div class="row" style="justify-content:space-between"><span class="lab" style="font-size:12px;color:var(--muted)">Finger scoops</span><button class="btn small" id="addScoop">Add scoop</button></div>
       ${t.scoops.map(s => `<div class="scoop" data-scoop="${s.id}">
         <div class="f"><label for="sl${s.id}">Length</label><input type="number" id="sl${s.id}" data-k="len" step="1" min="5" value="${fmt(s.len, 0)}"></div>
@@ -1926,10 +1952,10 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   trayFields.forEach(k => $(k).addEventListener('change', e => {
     const v = parseFloat(e.target.value); if (!isFinite(v)) return renderTrayPanel();
     const T = S.tray;
-    const lim = { W: [20, 600], D: [20, 600], H: [3, 200], floor: [0.4, 50], wall: [1, 60], web: [0.8, 30], clearance: [0, 5], outerChamfer: [0, 5], lipChamfer: [0, 5], floorChamfer: [0, 5] }[k];
+    const lim = { W: [20, 600], D: [20, 600], H: [3, 200], floor: [0.4, 50], wall: [1, 60], web: [0.8, 30], clearance: [0, 5], smooth: [0, 15], outerChamfer: [0, 5], lipChamfer: [0, 5], floorChamfer: [0, 5] }[k];
     T[k] = Math.max(lim[0], Math.min(lim[1], v));
     if (T.floor > T.H - 0.6) T.floor = Math.max(0.4, T.H - 0.6);
-    if (k === 'clearance' || k === 'wall' || k === 'web') normalize(false);
+    if (k === 'clearance' || k === 'smooth' || k === 'wall' || k === 'web') normalize(false);
     changed();
   }));
   $('modeHug').addEventListener('click', () => { S.tray.mode = 'hug'; normalize(false); changed(); });
@@ -1957,6 +1983,7 @@ async function Module(moduleArg={}){var moduleRtn;var Module=moduleArg;var ENVIR
   panel.addEventListener('change', e => {
     const t = S.tools.find(t => t.id === S.sel); if (!t) return;
     if (e.target.id === 'tH') { t.h = Math.max(0, +e.target.value || 0); normalize(false); changed(); }
+    if (e.target.id === 'tSm') { t.sm = e.target.value === '' ? null : Math.max(0, Math.min(15, +e.target.value)); normalize(false); changed(); }
     if (e.target.id === 'tClr') { t.clr = e.target.value === '' ? null : Math.max(0, +e.target.value); normalize(false); changed(); }
     const sc = e.target.closest('[data-scoop]');
     if (sc) {
