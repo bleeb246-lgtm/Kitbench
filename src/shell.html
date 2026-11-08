@@ -1,0 +1,313 @@
+<title>Kitbench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one-screen workbench — tabbed stage (photo / layout / 3D) beside a parameter panel; stacks on phones. */
+:root {
+  --bg: #F1F3F6;
+  --panel: #FAFBFC;
+  --raise: #FFFFFF;
+  --ink: #18202A;
+  --muted: #5E6B78;
+  --line: #D9DFE6;
+  --dykem: #2563EB;         /* layout-fluid blue, the accent */
+  --dykem-soft: rgba(37, 99, 235, .12);
+  --scoop: rgba(37, 99, 235, .26);
+  --warn: #B26A00;
+  --bad: #C62A2A;
+  --ok: #1F7A45;
+  --part: #9AA6B2;
+  --stage: #E7EBF0;
+  --grid: rgba(24, 32, 42, .06);
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 2px 8px rgba(16, 24, 40, .06);
+  --on-accent: #FFFFFF;
+  --f-ui: "Figtree", "Segoe UI", Roboto, system-ui, sans-serif;
+  --f-num: "Figtree", "Segoe UI", Roboto, system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1E252E; --panel: #252D37; --raise: #2F3944; --ink: #F2F5F8; --muted: #AAB6C2; --line: #3B4653;
+  --dykem: #6AA6FF; --dykem-soft: rgba(106, 166, 255, .16); --scoop: rgba(106, 166, 255, .32);
+  --warn: #F2B35B; --bad: #FF7B72; --ok: #6FD39A; --part: #9EADBB; --stage: #2A333E; --grid: rgba(242, 245, 248, .07);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 4px 14px rgba(0, 0, 0, .22); --on-accent: #0D1B2E;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #1E252E; --panel: #252D37; --raise: #2F3944; --ink: #F2F5F8; --muted: #AAB6C2; --line: #3B4653;
+  --dykem: #6AA6FF; --dykem-soft: rgba(106, 166, 255, .16); --scoop: rgba(106, 166, 255, .32);
+  --warn: #F2B35B; --bad: #FF7B72; --ok: #6FD39A; --part: #9EADBB; --stage: #2A333E; --grid: rgba(242, 245, 248, .07);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 4px 14px rgba(0, 0, 0, .22); --on-accent: #0D1B2E;
+  color-scheme: dark; }
+
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.4 var(--f-ui); margin: 0; }
+* { box-sizing: border-box; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--panel); }
+
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+.bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-block: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+}
+.brand { font-weight: 700; font-size: 19px; letter-spacing: -.01em; display: flex; align-items: baseline; gap: 8px; }
+.brand small { font: 500 12px var(--f-ui); color: var(--muted); }
+.tabs { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+.tabs button { border: 0; background: none; color: var(--muted); font: 600 14px var(--f-ui); padding: 6px 16px; border-radius: 7px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--raise); color: var(--dykem); box-shadow: var(--shadow); }
+.bar .spacer { flex: 1; }
+
+.btn { font: 600 14px var(--f-ui); border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--raise); color: var(--ink); }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--dykem); border-color: var(--dykem); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 4px 9px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--dykem); outline-offset: 2px; }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 0; }
+.stage { position: relative; background: radial-gradient(120% 90% at 50% 0%, var(--panel) 0%, var(--stage) 70%); min-height: 0; overflow: hidden; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.stage .view[hidden] { display: none; }
+.stage .view { position: absolute; inset: 0; }
+.hud { position: absolute; left: 12px; bottom: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
+.chip { font: 600 12px var(--f-ui); background: var(--panel); border: 1px solid var(--line); color: var(--ink); padding: 4px 10px; border-radius: 999px; box-shadow: var(--shadow); }
+.chip.warn { color: var(--warn); border-color: currentColor; }
+.chip.bad { color: var(--bad); border-color: currentColor; }
+.chip.ok { color: var(--ok); border-color: currentColor; }
+.hint { position: absolute; top: 12px; left: 12px; right: 12px; font-size: 13px; color: var(--muted); pointer-events: none; }
+.rotbar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; flex-wrap: nowrap;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 4px; box-shadow: var(--shadow); max-width: calc(100% - 20px); }
+.rotbar[hidden] { display: none; }
+.rotbar button { white-space: nowrap; border: 0; background: var(--raise); color: var(--ink); font: 600 13px var(--f-ui); min-width: 40px; height: 34px; padding: 0 6px; border-radius: 8px; cursor: pointer; }
+.rotbar button:hover { background: var(--dykem-soft); }
+.rb-name { font: 600 13px var(--f-ui); padding: 0 6px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-ang { font: 500 13px var(--f-num); color: var(--dykem); padding-right: 6px; min-width: 4.2em; text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .rb-name { display: none; } .rotbar button { min-width: 36px; padding: 0 4px; } }
+.rotbar .rb-add { font-family: var(--f-ui); font-weight: 600; color: var(--dykem); border-left: 1px solid var(--line); border-radius: 0 4px 4px 0; margin-left: 2px; }
+.scooptip { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.scooptip[hidden] { display: none; }
+@media (max-width: 520px) { .scooptip { white-space: normal; text-align: center; } }
+.vtools { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 4px; z-index: 2; }
+.vtools button { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 10px; font: 600 13px var(--f-ui); cursor: pointer; box-shadow: var(--shadow); }
+.vtools button:disabled { opacity: .45; cursor: default; }
+.vtools button[aria-pressed="true"] { background: var(--dykem); border-color: var(--dykem); color: var(--on-accent); }
+.hud { right: 260px !important; }
+body.focus .stage { position: fixed; inset: 0; z-index: 30; height: auto !important; min-height: 0; }
+body.focus { overflow: hidden; }
+@media (max-width: 520px) { .vtools button span { display: none; } .vtools button { padding: 0 9px; } .hud { right: 140px !important; } }
+.filebtn { position: relative; overflow: hidden; display: inline-block; }
+.filebtn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 200px; }
+.photobar { gap: 3px; }
+.pseg { display: flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; margin-right: 4px; }
+.pseg button { border-radius: 0 !important; font-family: var(--f-ui) !important; font-weight: 600 !important; min-width: 0 !important; padding: 0 10px !important; }
+.pseg button + button { border-left: 1px solid var(--line) !important; }
+.pseg button[aria-pressed="true"] { background: var(--dykem) !important; color: var(--on-accent) !important; }
+.photosens { position: absolute; top: 56px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; font-size: 12px; color: var(--muted); width: min(340px, calc(100% - 20px)); box-shadow: var(--shadow); }
+.photosens input { flex: 1; }
+.photosens span { font: 500 12px var(--f-num); color: var(--ink); min-width: 2.6em; }
+#photoTip { top: 96px; }
+@media (max-width: 520px) { .pseg button { padding: 0 7px !important; } #strokeClear { display: none; } }
+.busy { position: absolute; top: 12px; right: 12px; font: 500 12px var(--f-num); color: var(--muted); }
+
+.panel { background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; min-height: 0;
+  padding-block: 4px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.sec { padding-block: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.sec:last-child { border-bottom: 0; }
+.sec h2 { font: 700 15px var(--f-ui); color: var(--ink); margin: 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.f { display: grid; gap: 3px; min-width: 0; }
+.f label, .f .lab { font-size: 12px; color: var(--muted); letter-spacing: .02em; }
+.f input[type="number"], .f input[type="text"], .f select {
+  width: 100%; font: 500 14px var(--f-num); color: var(--ink); background: var(--raise);
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 0; font-variant-numeric: tabular-nums; }
+.f input[readonly] { background: transparent; color: var(--muted); }
+.unit { position: relative; }
+.unit input { padding-right: 30px !important; }
+.unit::after { content: attr(data-u); position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: 12px var(--f-num); color: var(--muted); pointer-events: none; }
+input[type="range"] { width: 100%; accent-color: var(--dykem); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--raise); color: var(--muted); font: 600 13px var(--f-ui); padding: 6px 8px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--dykem); color: var(--on-accent); }
+.note { font-size: 13px; color: var(--muted); line-height: 1.45; max-width: 60ch; }
+.note b { color: var(--ink); font-weight: 600; }
+.readout { font: 500 13px var(--f-num); display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+.readout dt { color: var(--muted); font-family: var(--f-ui); }
+.readout dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+.tools { display: grid; gap: 4px; }
+.tool { display: grid; grid-template-columns: 12px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--raise); cursor: pointer; text-align: left; font: inherit; color: inherit; width: 100%; }
+.tool[aria-pressed="true"] { border-color: var(--dykem); box-shadow: inset 3px 0 0 var(--dykem); }
+.tool .dot { width: 10px; height: 10px; border-radius: 2px; background: var(--dykem); }
+.tool .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+.tool .dm { font: 12px var(--f-num); color: var(--muted); }
+.detail { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 10px; background: var(--raise); }
+.scoop { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 6px; align-items: end; }
+.empty { font-size: 13px; color: var(--muted); padding: 8px 0; }
+.drop { border: 1.5px dashed var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.drop.on { border-color: var(--dykem); background: var(--dykem-soft); }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 14px; z-index: 20; max-width: calc(100% - 32px); }
+
+@media (max-width: 820px) {
+  html, body { height: auto; }
+  .app { height: auto; display: block; }
+  .work { display: block; }
+  .stage { height: 58svh; min-height: 320px; }
+  .panel { border-left: 0; overflow: visible; }
+  .bar .tabs { order: 3; width: 100%; }
+  .bar .tabs button { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">Kitbench <small>photo → kitting tray</small></div>
+    <div class="tabs" role="tablist" aria-label="View">
+      <button role="tab" id="tab-photo" aria-selected="true" data-tab="photo">Photo</button>
+      <button role="tab" id="tab-layout" aria-selected="false" data-tab="layout">Layout</button>
+      <button role="tab" id="tab-3d" aria-selected="false" data-tab="3d">3D</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="row" id="exportBtns"></div>
+  </header>
+
+  <div class="work">
+    <section class="stage" id="stage">
+      <div class="view" id="v-photo"><canvas id="cv-photo"></canvas>
+        <div class="rotbar photobar" id="photobar" role="toolbar" aria-label="Photo tools">
+          <div class="pseg" role="group" aria-label="Mode">
+            <button data-pmode="corners" aria-pressed="true">Corners</button>
+            <button data-pmode="erase" aria-pressed="false">Erase</button>
+            <button data-pmode="add" aria-pressed="false">Add</button>
+          </div>
+          <button id="brushDn" aria-label="Smaller brush">−</button>
+          <span class="rb-ang" id="brushV" title="Brush diameter">12 mm</span>
+          <button id="brushUp" aria-label="Larger brush">+</button>
+          <button id="strokeUndo" aria-label="Undo last stroke" title="Undo last stroke"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 1.8 6.7 5 9.9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.2 6.7h7.3a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+          <button id="strokeClear">Clear</button>
+        </div>
+        <div class="photosens" id="photosens"><label for="sens2">Sensitivity</label><input type="range" id="sens2" min="0.10" max="0.75" step="0.01" value="0.28"><span id="sensV2">0.28</span></div>
+        <div class="scooptip" id="photoTip">Drag the blue handles onto the sheet corners if detection missed.</div></div>
+      <div class="view" id="v-layout" hidden><canvas id="cv-layout"></canvas>
+        <div class="hint" id="layHint">Drag pockets to move them. Tap a tool to rotate it with the knob or the bar. Scoops: drag the dot to move, a square end to stretch or turn, the diamond to change width.</div>
+        <div class="rotbar" id="rotbar" hidden role="toolbar" aria-label="Rotate selected tool">
+          <span class="rb-name" id="rbName"></span>
+          <span class="rb-ang" id="rbAng"></span>
+          <button data-rot="-90" aria-label="Rotate 90 degrees counter-clockwise"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align:-2px"><path d="M4.5 4.2A5.5 5.5 0 1 1 2.6 9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.8 2.2v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>90</button>
+          <button data-rot="-15" aria-label="Rotate minus 15 degrees">−15</button>
+          <button data-rot="-1" aria-label="Rotate minus 1 degree">−1</button>
+          <button data-rot="1" aria-label="Rotate plus 1 degree">+1</button>
+          <button data-rot="15" aria-label="Rotate plus 15 degrees">+15</button>
+          <button data-rot="90" aria-label="Rotate 90 degrees clockwise"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align:-2px;transform:scaleX(-1)"><path d="M4.5 4.2A5.5 5.5 0 1 1 2.6 9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M1.8 2.2v3.6h3.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>90</button>
+          <button id="rbScoop" class="rb-add" aria-label="Add finger scoop">+ Scoop</button>
+        </div>
+        <div class="scooptip" id="scoopTip" hidden>Scoop: drag the dot to move it, a square end to stretch or turn it, the diamond to set its width.</div></div>
+      <div class="view" id="v-3d" hidden><div id="three" style="position:absolute;inset:0"></div></div>
+      <div class="vtools" role="toolbar" aria-label="Edit">
+        <button id="btnUndo" disabled aria-label="Undo" title="Undo (Ctrl+Z)"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5 1.8 6.7 5 9.9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.2 6.7h7.3a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Undo</span></button>
+        <button id="btnRedo" disabled aria-label="Redo" title="Redo (Ctrl+Shift+Z)"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" style="transform:scaleX(-1)"><path d="M5 3.5 1.8 6.7 5 9.9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M2.2 6.7h7.3a4 4 0 0 1 0 8H7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></button>
+        <button id="btnFull" aria-pressed="false" title="Full screen (Esc to exit)"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 6V1.5H6M10 1.5h4.5V6M14.5 10v4.5H10M6 14.5H1.5V10" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>Full screen</span></button>
+      </div>
+      <div class="busy" id="busy"></div>
+      <div class="hud" id="hud"></div>
+    </section>
+
+    <aside class="panel" id="panel">
+      <!-- PHOTO -->
+      <div data-for="photo">
+        <div class="sec">
+          <h2>Photo</h2>
+          <div class="drop" id="drop">
+            <div class="row">
+              <span class="btn primary filebtn">Take photo<input type="file" id="fileCam" accept="image/*" capture="environment" aria-label="Take photo"></span>
+              <span class="btn filebtn">Choose photo<input type="file" id="fileAny" accept="image/*" aria-label="Choose photo"></span>
+              <button class="btn" id="btnSample">Load sample</button>
+            </div>
+            <div class="note">Tools on one sheet of <b>Letter or A4</b>, flat on a darker surface, nothing hanging off the paper. Shoot from roughly overhead in even light; a little tilt is corrected.</div>
+          </div>
+          <div class="note" id="srcNote"></div>
+        </div>
+        <div class="sec">
+          <h2>Sheet &amp; camera</h2>
+          <div class="grid2">
+            <div class="f"><label for="paper">Paper</label>
+              <select id="paper"><option value="auto">Auto-detect</option><option value="letter">Letter 8.5×11</option><option value="a4">A4</option></select></div>
+            <div class="f"><label for="f35">Lens, 35 mm equiv.</label><div class="unit" data-u="mm"><input type="number" id="f35" min="10" max="200" step="1" value="26"></div></div>
+          </div>
+          <dl class="readout" id="camReadout"></dl>
+          <button class="btn small" id="btnRedetect" style="justify-self:start">Re-detect corners</button>
+        </div>
+        <div class="sec">
+          <h2>Trace</h2>
+          <div class="f"><label for="sens">Edge sensitivity <span id="sensV" style="font-family:var(--f-num)"></span></label>
+            <input type="range" id="sens" min="0.10" max="0.75" step="0.01" value="0.28"></div>
+          <div class="note">Lower picks up lighter parts; higher drops shadows.</div>
+          <div class="grid2">
+            <div class="f"><label for="minArea">Ignore specks under</label><div class="unit" data-u="mm²"><input type="number" id="minArea" min="20" max="5000" step="10" value="150"></div></div>
+          </div>
+          <dl class="readout" id="traceReadout"></dl>
+          <button class="btn primary" id="btnToLayout" style="justify-self:start">Lay out tray →</button>
+        </div>
+      </div>
+
+      <!-- LAYOUT -->
+      <div data-for="layout" hidden>
+        <div class="sec">
+          <h2>Tray</h2>
+          <div class="seg" role="group" aria-label="Sizing">
+            <button id="modeHug" aria-pressed="true">Hug the tools</button>
+            <button id="modeFixed" aria-pressed="false">Fixed size</button>
+          </div>
+          <div class="grid3">
+            <div class="f"><label for="W">Width X</label><div class="unit" data-u="mm"><input type="number" id="W" step="1" min="20"></div></div>
+            <div class="f"><label for="D">Depth Y</label><div class="unit" data-u="mm"><input type="number" id="D" step="1" min="20"></div></div>
+            <div class="f"><label for="H">Height Z</label><div class="unit" data-u="mm"><input type="number" id="H" step="0.5" min="4"></div></div>
+          </div>
+          <div class="grid3">
+            <div class="f"><label for="floor">Floor</label><div class="unit" data-u="mm"><input type="number" id="floor" step="0.2" min="0.6"></div></div>
+            <div class="f"><label for="pdepth">Pocket depth</label><div class="unit" data-u="mm"><input type="number" id="pdepth" readonly tabindex="-1"></div></div>
+            <div class="f" id="wallF"><label for="wall">Edge margin</label><div class="unit" data-u="mm"><input type="number" id="wall" step="0.5" min="2"></div></div>
+          </div>
+          <div class="note">Floor stays fixed; changing height changes pocket depth.</div>
+        </div>
+        <div class="sec">
+          <h2>Fit &amp; edges</h2>
+          <div class="grid2">
+            <div class="f"><label for="clearance">Clearance per side</label><div class="unit" data-u="mm"><input type="number" id="clearance" step="0.1" min="0"></div></div>
+            <div class="f"><label for="web">Min web</label><div class="unit" data-u="mm"><input type="number" id="web" step="0.5" min="1"></div></div>
+          </div>
+          <div class="grid3">
+            <div class="f"><label for="outerChamfer">Outer chamfer</label><div class="unit" data-u="mm"><input type="number" id="outerChamfer" step="0.1" min="0"></div></div>
+            <div class="f"><label for="lipChamfer">Pocket lip</label><div class="unit" data-u="mm"><input type="number" id="lipChamfer" step="0.1" min="0"></div></div>
+            <div class="f"><label for="floorChamfer">Pocket floor</label><div class="unit" data-u="mm"><input type="number" id="floorChamfer" step="0.1" min="0"></div></div>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="row" style="justify-content:space-between"><h2>Tools</h2><button class="btn small" id="btnArrange">Auto-arrange</button></div>
+          <div class="tools" id="toolList"></div>
+          <div id="toolDetail"></div>
+        </div>
+      </div>
+
+      <!-- 3D -->
+      <div data-for="3d" hidden>
+        <div class="sec">
+          <h2>Part</h2>
+          <dl class="readout" id="partReadout"></dl>
+          <div class="f"><label for="fname">File name</label><input type="text" id="fname" value="kit-tray"></div>
+          <div class="row" id="exportBtns2"></div>
+          <div class="note" id="exportNote"></div>
+        </div>
+        <div class="sec">
+          <h2>Printing it</h2>
+          <div class="note">Print pockets-up, no supports. The chamfers keep the first layer from flaring and the lip clean. Bambu Handy can't slice a local file on the phone as far as I can confirm, so open the 3MF in Bambu Studio (or Orca) to send it; the file carries geometry only, no print profile.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>

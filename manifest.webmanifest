@@ -1,0 +1,15 @@
+{
+  "name": "Kitbench",
+  "short_name": "Kitbench",
+  "description": "Photo to kitting tray: fitted tool pockets, finger scoops, 3MF/STL export.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1E252E",
+  "theme_color": "#2563EB",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
